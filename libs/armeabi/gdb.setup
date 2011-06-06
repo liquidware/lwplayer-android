@@ -1,0 +1,2 @@
+set solib-search-path C:/Users/Chris/Documents/Arduino/InnovativeDrive/lwplayer-android/obj/local/armeabi
+directory C:/Users/Chris/Documents/Arduino/InnovativeDrive/android-ndk/platforms/android-8/arch-arm/usr/include C:/Users/Chris/Documents/Arduino/InnovativeDrive/lwplayer-android/jni/ffmpeg C:/Users/Chris/Documents/Arduino/InnovativeDrive/lwplayer-android/jni C:/Users/Chris/Documents/Arduino/InnovativeDrive/android-ndk/sources/cxx-stl/system

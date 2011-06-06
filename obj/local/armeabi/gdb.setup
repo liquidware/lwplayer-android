@@ -1,0 +1,4 @@
+set solib-search-path C:/Users/Chris/Documents/Arduino/InnovativeDrive/lwplay2/obj/local/armeabi
+directory C:/Users/Chris/Documents/Arduino/InnovativeDrive/android-ndk/platforms/android-8/arch-arm/usr/include C:/Users/Chris/Documents/Arduino/InnovativeDrive/lwplay2/jni C:/Users/Chris/Documents/Arduino/InnovativeDrive/android-ndk/sources/cxx-stl/system
+file C:/Users/Chris/Documents/Arduino/InnovativeDrive/lwplay2/obj/local/armeabi/app_process
+target remote :5039
