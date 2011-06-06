@@ -3,9 +3,6 @@ package com.liquidware.lwplayer;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.ArrayList;
-import java.util.EventListener;
-
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioTrack;
@@ -19,23 +16,23 @@ public class MediaThread extends AsyncTask<Void, Integer, Void> {
 	private DataInputStream in;
 	private MediaStatus status;
 	private int PlayerStatus = MediaStatus.STATUS_STOPPED;
+	static boolean ThreadInterrupted = false;
 	
 	private final int duration = 1; // seconds
 	private final int sampleRate = 44100;
 	private final int numBytesPerSample = 2;
 	private final int numChans = 2; 
 	private final int numSamples = numBytesPerSample * numChans * sampleRate * duration;
-
-	private byte generatedSnd[] = new byte[numSamples];
 	
-	final AudioTrack audioTrack = new AudioTrack(AudioManager.STREAM_MUSIC,
-			sampleRate, AudioFormat.CHANNEL_CONFIGURATION_STEREO,
-			AudioFormat.ENCODING_PCM_16BIT, numSamples, AudioTrack.MODE_STREAM);
+	AudioTrack audioTrack;
 	
 	public MediaThread(InputStream in) {
 		this.in = new DataInputStream(in);
 		avInit(); //init the codecs
 		avOpen(); //open the codec
+		audioTrack = new AudioTrack(AudioManager.STREAM_MUSIC,
+				sampleRate, AudioFormat.CHANNEL_CONFIGURATION_STEREO,
+				AudioFormat.ENCODING_PCM_16BIT, numSamples, AudioTrack.MODE_STREAM);
 	}
 	
 	public void addProgressListener(MediaStatus ms) {
@@ -47,7 +44,13 @@ public class MediaThread extends AsyncTask<Void, Integer, Void> {
 	}
 
 	public void stop() {
-		PlayerStatus = MediaStatus.STATUS_STOP; 
+		try {
+			in.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
 	}
 	
 	public int getPlayerStatus() {
@@ -74,7 +77,7 @@ public class MediaThread extends AsyncTask<Void, Integer, Void> {
 		
 		PlayerStatus = MediaStatus.STATUS_PLAY;
 		
-		while(!Thread.interrupted())
+		while(!ThreadInterrupted)
 		{
 			if (PlayerStatus == MediaStatus.STATUS_PLAY) {
 				Log.i(TAG, "M:Status: Requested Play");
@@ -132,7 +135,17 @@ public class MediaThread extends AsyncTask<Void, Integer, Void> {
 		}
 		return null;
 	}
+	
+	/*
+	 * Just in case the thread was force closed, notify the callback
+	 */
+    protected void onPostExecute(Long result) {
+		if (status != null) {
+			status.onProgressUpdate(MediaStatus.PROGRESS_STOPPED);
+		}
+    }
 
+	
 	/*
 	 * A native method that is implemented by the 'lw-player' native library,
 	 * which is packaged with this application.

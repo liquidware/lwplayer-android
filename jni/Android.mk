@@ -17,7 +17,7 @@ LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 
 LOCAL_C_INCLUDES := $(call host-path,$(LOCAL_PATH)/ffmpeg)
-LOCAL_CFLAGS := -fexpensive-optimizations -ftree-vectorize -fomit-frame-pointer -O4 -ffast-math -mfloat-abi=softfp
+LOCAL_CFLAGS := -fexpensive-optimizations -ftree-vectorize -fomit-frame-pointer -O4 -ffast-math -mfloat-abi=softfp -g
 
 LOCAL_MODULE    := lw-player
 LOCAL_SRC_FILES := lw-player.c

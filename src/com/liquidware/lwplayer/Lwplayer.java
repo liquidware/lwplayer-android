@@ -28,21 +28,22 @@ import com.Ostermiller.util.CircularByteBuffer;
 import com.liquidware.lwplayer.R;
 
 public class Lwplayer extends Activity {
-	private static final String TAG = "Lwplay";   
+	private static final String TAG = "Lwplay";    
 
 	TextView tv;
 	EditText et1;
 	Button playb; 
-	private int playerBytesTotal = 0;
+	private int playerBytesTotal = 0;    
+
+	CircularByteBuffer cbb1;
+	CircularByteBuffer cbb2;
+
+	InputStream in1;
+	OutputStream out1;
+	InputStream in2;
+	OutputStream out2;
 	
-	CircularByteBuffer cbb1 = new CircularByteBuffer(50000, true);
-	CircularByteBuffer cbb2 = new CircularByteBuffer(50000, true);
-	InputStream in1 = cbb1.getInputStream();
-	OutputStream out1 = cbb1.getOutputStream();
-	InputStream in2 = cbb2.getInputStream();
-	OutputStream out2 = cbb2.getOutputStream();
-	
-	StreamThread streamThread;
+	StreamThread streamThread; 
 	DemuxThread demuxThread;
 	MediaThread mediaThread = new MediaThread(in2);
 	
@@ -64,19 +65,26 @@ public class Lwplayer extends Activity {
 		tv.setText("");
 	}
 
-	/**
+	/** 
 	 * A call-back for when the user presses the back button.
 	 */
 	OnClickListener mPlayListener = new OnClickListener() {
 		public void onClick(View v) {
 			if (mediaThread.getPlayerStatus() == MediaStatus.STATUS_PLAYING) {
-				mediaThread.cancel(true);
+				mediaThread.stop();
 				demuxThread.cancel(true);
 				streamThread.cancel(true);
-				
 			} else if (mediaThread.getPlayerStatus() == MediaStatus.STATUS_STOPPED){
 				/* Connect and get the stream */
-					
+
+					cbb1 = new CircularByteBuffer(50000, true);
+					cbb2 = new CircularByteBuffer(50000, true);
+
+					in1 = cbb1.getInputStream();
+					out1 = cbb1.getOutputStream();
+					in2 = cbb2.getInputStream();
+					out2 = cbb2.getOutputStream(); 
+				
 					String url = et1.getText().toString();
 					streamThread = new StreamThread(url, out1);
 					streamThread.execute();

@@ -66,8 +66,6 @@ static void audio_encode_example(const char *filename)
 
     c= avcodec_alloc_context();
 
-
-
     /* put sample parameters */
     c->bit_rate = 48000;
     c->sample_rate = 44100;
@@ -140,22 +138,22 @@ static void audio_decode_init(void)
 	c= NULL;
 
     av_init_packet(&avpkt);
-    LOGI("audio_decode_init");
+    LOGI("M:audio_decode_init");
 
     /* find the audio decoder */
 	codec = avcodec_find_decoder(CODEC_ID_AAC);
 	if (!codec) {
-		LOGE("Codec not found, err=%d", (int)codec);
+		LOGE("M:Codec not found, err=%d", (int)codec);
 		return;
     } else {
-    	LOGI("Codec found.");
+    	LOGI("M:Codec found.");
     }
 
     c= avcodec_alloc_context();
 
     /* open it */
     if (avcodec_open(c, codec) < 0) {
-        LOGE("Could not open codec");
+        LOGE("M:Could not open codec");
         return;
     }
 }
@@ -168,30 +166,32 @@ static void audio_decode_init(void)
  * avpkt.size is the amount of left over input data
  */
 int audio_decode_frame() {
+	//int err_cnt = 0;
     /* decode until end of packet */
     avpkt.data = inbuf;
     avpkt.size = AUDIO_INBUF_SIZE;
     outbuf_size = 0;
 
+
     while (avpkt.size > 0) {
         out_size = AVCODEC_MAX_AUDIO_FRAME_SIZE;
         len = avcodec_decode_audio3(c, (short *)(outbuf+outbuf_size), &out_size, &avpkt);
         if (len < 0) {
-            LOGE("Error while decoding. avpkt.size=%d", avpkt.size);
+            LOGE("M:Error while decoding. len=%d, avpkt.size=%d. Realigning", len, avpkt.size);
             return -1;
         }
         if (out_size > 0) {
             /* if a frame has been decoded, output it */
             //fwrite(outbuf, 1, out_size, outfile);
-        	//LOGI("Frame decoded.");
+        	//LOGI("M:Frame decoded.");
         	outbuf_size+=out_size;
         } else {
-        	LOGI("Frame not decoded");
+        	LOGI("M:Frame not decoded");
         }
-        //LOGI("avpkt.size=%d, len=%d", avpkt.size, len);
+        //LOGI("M:avpkt.size=%d, len=%d", avpkt.size, len);
         avpkt.size -= len;
         avpkt.data += len;
-        //LOGI("avpkt.size=%d, len=%d", avpkt.size, len);
+        //LOGI("M:avpkt.size=%d, len=%d", avpkt.size, len);
         if (avpkt.size < 0) avpkt.size = 0;
 
         if (avpkt.size < AUDIO_REFILL_THRESH) {
@@ -199,7 +199,7 @@ int audio_decode_frame() {
              * incomplete frames. Instead of this, one could also use
              * a parser, or use a proper container format through
              * libavformat. */
-        	//LOGI("moving avpkt to front, size=%d", avpkt.size);
+        	//LOGI("M:moving avpkt to front, size=%d", avpkt.size);
             memmove(inbuf, avpkt.data, avpkt.size);
             /* go get more data */
             break;
@@ -223,13 +223,13 @@ jstring
 Java_com_liquidware_lwplayer_MediaThread_avInit( JNIEnv* env,
                                             jobject thiz )
 {
-	LOGI("About to avcodec_init\n");
+	LOGI("M:About to avcodec_init\n");
 	avcodec_init();
 
-	LOGI("About to avcodec_register_all\n");
+	LOGI("M:About to avcodec_register_all\n");
 	avcodec_register_all();
 
-	LOGI("About to av_register_all\n");
+	LOGI("M:About to av_register_all\n");
 	av_register_all();
 
 	return (*env)->NewStringUTF(env, avcodec_configuration());
@@ -242,7 +242,7 @@ jint
 Java_com_liquidware_lwplayer_MediaThread_avOpen( JNIEnv* env,
                                             jobject thiz )
 {
-	LOGI("About to audio_decode_init\n");
+	LOGI("M:About to audio_decode_init\n");
 	audio_decode_init();
 }
 
@@ -286,28 +286,45 @@ Java_com_liquidware_lwplayer_MediaThread_avDecode( JNIEnv* env,
                                                   jobject thiz,
                                                   jbyteArray encodedBytes, jbyteArray rawDecodedBytes)
 {
-	int len;
+	int decodedLen;
+	int fillLen;
+	int maxFillLen;
+	int maxDecodedLen;
 	char out[64];
 
+	maxDecodedLen = (*env)->GetArrayLength(env, rawDecodedBytes);
+	maxFillLen = (*env)->GetArrayLength(env, encodedBytes);
+
 	/* Get the encoded data */
-	len = (*env)->GetArrayLength(env, encodedBytes);
-	(*env)->GetByteArrayRegion(env, encodedBytes, 0, len, inbuf);
-	//LOGI("Read %d bytes into jni\n", len);
+	(*env)->GetByteArrayRegion(env, encodedBytes, 0, maxFillLen, inbuf);
 
 	/* Do some work */
-	len = audio_decode_frame();
-	if (len < 0 ) {
+	decodedLen = audio_decode_frame();
+	fillLen = avpkt.size;
+
+	/* Error check */
+	if (decodedLen < 0 ) {
+		LOGE("M:Error on decoded length");
 		return (*env)->NewStringUTF(env, "-1,-1");
+	} else if (decodedLen > maxDecodedLen) {
+		decodedLen = maxDecodedLen;
 	}
 
-	/* Store the output */
-	(*env)->SetByteArrayRegion(env, rawDecodedBytes, 0, len, outbuf);
-	//LOGI("Wrote %d decoded bytes from jni\n", len);
+	/* Error check */
+	if (fillLen < 0 ) {
+		LOGE("M:Error on packet length");
+		return (*env)->NewStringUTF(env, "-1,-1");
+	} else if (fillLen > maxFillLen) {
+		fillLen = maxFillLen;
+	}
 
-	(*env)->SetByteArrayRegion(env, encodedBytes, 0, avpkt.size, inbuf);
-	//LOGI("Get %d more bytes\n", (AUDIO_INBUF_SIZE-avpkt.size) );
+	LOGI("M:Setting decodedLen:%d max:%d, fillLen:%d max:%d", decodedLen, maxDecodedLen, fillLen, maxFillLen);
 
-	sprintf(out, "%d,%d", len, avpkt.size);
+	/* Store the Decoded Bytes */
+	(*env)->SetByteArrayRegion(env, rawDecodedBytes, 0, decodedLen, outbuf);
+	(*env)->SetByteArrayRegion(env, encodedBytes, 0, fillLen, inbuf);
+
+	sprintf(out, "%d,%d", decodedLen, fillLen);
 	return (*env)->NewStringUTF(env, out);
 
 	/*

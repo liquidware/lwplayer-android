@@ -1,6 +1,7 @@
 package com.liquidware.lwplayer;
 
 import java.io.DataInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
@@ -11,11 +12,26 @@ public class DemuxThread extends AsyncTask<Void, Integer, Void> {
 	private static final String TAG = "Lwplay.DemuxThread"; 
 	InputStream in;
 	OutputStream out;
+	static boolean ThreadInterrupted = false;
 	
 	public DemuxThread(InputStream in, OutputStream out) {
 		super();
 		this.in = in;
 		this.out = out;
+	}
+	
+	/**
+	 * Gracefully stop the thread
+	 */
+	public void stop() {
+		ThreadInterrupted = true;
+		try {
+			in.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
 	}
 	
 	protected void onProgressUpdate(Integer... progress) {
@@ -54,7 +70,7 @@ public class DemuxThread extends AsyncTask<Void, Integer, Void> {
 				Duration, milliseconds	UINT16	2
 				Number of segments & segment properties	UINT8	0 or 1 ( depends on flags )
 		 */
-		while( (inBytes != -1) ) {
+		while(!ThreadInterrupted) {
 			try {
 				int i=0;
 				byte[] tmp = new byte[8];
@@ -71,7 +87,7 @@ public class DemuxThread extends AsyncTask<Void, Integer, Void> {
 					err_cnt++;
 
 					//purge until we find a something
-					while((id != 0x82) && (inBytes != -1)) {
+					while((id != 0x82) && (!ThreadInterrupted)) {
 						in.readFully(buf,0,buf.length);
 						id = buf[0] & 0xFF;
 					}

@@ -20,10 +20,18 @@ public class StreamThread extends AsyncTask<Void, Integer, Void> {
 	private static final String TAG = "StreamThread";
 	private String urlStr;
 	private OutputStream out;
-
+	static boolean ThreadInterrupted = false;
+	HttpURLConnection conn;
+	
 	public StreamThread(String srcUrl, OutputStream out) {
 		urlStr = srcUrl;
 		this.out = out;
+	}
+	
+	public void stop() {
+		ThreadInterrupted = true;
+		conn.disconnect();
+		//this.cancel(true);
 	}
 	
 	protected void onProgressUpdate(Integer... progress) {
@@ -44,7 +52,6 @@ public class StreamThread extends AsyncTask<Void, Integer, Void> {
 
 		try {
 			connectURL = new URL(urlStr);
-			HttpURLConnection conn;
 			conn = (HttpURLConnection)connectURL.openConnection();
 
 			// do some setup
@@ -119,12 +126,12 @@ public class StreamThread extends AsyncTask<Void, Integer, Void> {
 		boolean asf_header_parsed = false;
 		int asf_packet_len = 0;
 
-		while (inBytes != -1) {
+		while (!ThreadInterrupted) {
 			try {
 
 				Log.i(TAG, "S:Scanning for packet");
 
-				while (inBytes != -1) {
+				while (!ThreadInterrupted) {
 					if (is.available() > 12){
 						is.readFully(header, 0,  1);
 						if ( header[0] == 0x24) {
@@ -204,24 +211,6 @@ public class StreamThread extends AsyncTask<Void, Integer, Void> {
 					Log.d(TAG,"S:Reading: " + chunk_length);
 					is.readFully(asf_data, 0, chunk_length);
 					out.write(asf_data);
-					/*
-					//read and save the data chunks
-					byte[] asf_data = new byte[chunk_length];
-
-					count = 0;
-					while (count < chunk_length) {
-						int max_bytes = (chunk_length - count);
-						Log.d(TAG,"S:Reading max bytes from stream: " + max_bytes);
-						is.readFully(asf_data, 0, max_bytes);
-						Log.d(TAG,"S:Read: "+ inBytes);
-						if (inBytes != -1) {
-							//Write the stream data
-							out.write(asf_data);
-							count += inBytes;
-							Log.d(TAG,"Bytes written to from stream: " + inBytes); 
-						}
-					}
-					*/
 				}
 			} catch(Exception e) {
 				e.printStackTrace();
@@ -229,17 +218,12 @@ public class StreamThread extends AsyncTask<Void, Integer, Void> {
 			}
 		}
 
-
-		//while( (( ch = is.readFully() ) != -1) && (count < 1000) ) { 
-		//    sb.append( (char)ch );
-		//    count++;
-		//} 
 		Log.e(TAG,sb.toString());
 		String header_str = "\nHeader:";
 		String field = " ";
 		int x = 0;
 
-		while (field != null) {
+		while ((field != null) && !ThreadInterrupted) {
 			header_str = header_str + "\n" + field;
 			field = conn.getHeaderField(x);
 			x++;

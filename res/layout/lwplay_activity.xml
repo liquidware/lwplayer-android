@@ -24,7 +24,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent" android:layout_height="match_parent"
     android:orientation="vertical" android:gravity="top">
-    <EditText android:id="@+id/editText1" android:layout_height="wrap_content" android:layout_width="match_parent" android:inputType="textUri" android:text="http://192.168.1.112:8080/test.asf"></EditText>
+    <EditText android:id="@+id/editText1" android:layout_height="wrap_content" android:layout_width="match_parent" android:inputType="textUri" android:text="http://192.168.1.200:8080/test.asf"></EditText>
     <Button android:text="Play" android:layout_height="wrap_content" android:id="@+id/button1" android:layout_width="match_parent"></Button>
     <TextView android:includeFontPadding="true" android:layout_height="wrap_content" android:id="@+id/textView2" android:layout_width="wrap_content" android:text="Messages:"></TextView>
     <TextView android:layout_width="match_parent" 
