@@ -1,56 +1,102 @@
 package com.liquidware.lwplayer;
 
-import java.io.DataInputStream;
-import java.io.IOException;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.InputStream;
-import android.media.AudioFormat;
-import android.media.AudioManager;
-import android.media.AudioTrack;
+import java.io.OutputStream;
+
 import android.os.AsyncTask;
 import android.util.Log;
+
+import com.Ostermiller.util.CircularByteBuffer;
 import com.liquidware.lwplayer.MediaStatus;
 
 public class MediaThread extends AsyncTask<Void, Integer, Void> {
 	private static final String TAG = "Lwplay.MediaPlayer"; 
-	
-	private DataInputStream in;
 	private MediaStatus status;
 	private int PlayerStatus = MediaStatus.STATUS_STOPPED;
-	static boolean ThreadInterrupted = false;
+	boolean ThreadInterrupted = false;
+	private File demuxOutputFile;
+	private File streamOutputFile;
+	private File audioInputFile;
 	
-	private final int duration = 1; // seconds
-	private final int sampleRate = 44100;
-	private final int numBytesPerSample = 2;
-	private final int numChans = 2; 
-	private final int numSamples = numBytesPerSample * numChans * sampleRate * duration;
+	CircularByteBuffer cbb1;
+	CircularByteBuffer cbb2;
+
+	InputStream in1;
+	OutputStream out1;
+	InputStream in2;
+	OutputStream out2;
 	
-	AudioTrack audioTrack;
+	StreamThread streamThread; 
+	DemuxThread demuxThread;
+	AudioThread audioThread;
 	
-	public MediaThread(InputStream in) {
-		this.in = new DataInputStream(in);
-		avInit(); //init the codecs
-		avOpen(); //open the codec
-		audioTrack = new AudioTrack(AudioManager.STREAM_MUSIC,
-				sampleRate, AudioFormat.CHANNEL_CONFIGURATION_STEREO,
-				AudioFormat.ENCODING_PCM_16BIT, numSamples, AudioTrack.MODE_STREAM);
+	String url;
+	
+	
+	public MediaThread() {
+		demuxOutputFile = null;
+		streamOutputFile = null;
+		audioInputFile = null;
 	}
 	
 	public void addProgressListener(MediaStatus ms) {
 		status = ms;
 	}
 	
-	public void play() {
-		this.execute(); 
+	public void setUrl(String url) {
+		this.url = url;
 	}
-
+	
+	/**
+	 * 
+	 * @param file Optionally redirect the demuxed data (in aac format) to this file.
+	 */
+	public void setDemuxOutputFile(File file) {
+		demuxOutputFile = file;
+	}
+	
+	/**
+	 * 
+	 * @param file Optionally redirect the streamed data to this file.
+	 */
+	public void setStreamOutputFile(File file) {
+		demuxOutputFile = file;
+	}
+	
+	/**
+	 * 
+	 * @param file Optionally read this file into the audio decoder.
+	 */
+	public void setAudioInputFile(File file) {
+		audioInputFile = file;
+	}
+	
+	/**
+	 * Plays a URL
+	 * @param url
+	 */
+	public void play(String url) {
+		this.url = url;
+		audioInputFile = null;
+		PlayerStatus = MediaStatus.STATUS_PLAY;
+	}
+	
+	/**
+	 * Plays a file
+	 * @param file 
+	 */
+	public void play(File file) {
+		url = null;
+		audioInputFile = file;
+		PlayerStatus = MediaStatus.STATUS_PLAY;
+	}
+	
 	public void stop() {
-		try {
-			in.close();
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-		
+		PlayerStatus = MediaStatus.STATUS_STOP;
 	}
 	
 	public int getPlayerStatus() {
@@ -68,55 +114,54 @@ public class MediaThread extends AsyncTask<Void, Integer, Void> {
 
 	@Override
 	protected Void doInBackground(Void... params) {
-		// TODO Auto-generated method stub
 
-		int bytesinDecoded = 0;
-		int bytesinPkt = 0;
-		byte[] encodedBytes = new byte[avGetInBufSize()];
-		byte[] rawDecodedBytes = new byte[avGetOutBufSize()];
-		
-		PlayerStatus = MediaStatus.STATUS_PLAY;
-		
 		while(!ThreadInterrupted)
 		{
 			if (PlayerStatus == MediaStatus.STATUS_PLAY) {
 				Log.i(TAG, "M:Status: Requested Play");
 				/* Initialize */
-				bytesinPkt = 0;
-				audioTrack.play();
-				publishProgress(MediaStatus.PROGRESS_STARTED);
-				PlayerStatus = MediaStatus.STATUS_PLAYING;
-			} else if (PlayerStatus == MediaStatus.STATUS_PLAYING) {
-				/* Read the aac file packets and attempt to refill the buffer */
-				int filledPktCnt = (encodedBytes.length - bytesinPkt);
+				cbb1 = new CircularByteBuffer(50000, true);
+				cbb2 = new CircularByteBuffer(50000, true);
 
-				Log.i(TAG, "M:Trying to read: " + filledPktCnt);
+				in1 = cbb1.getInputStream();
+				out1 = cbb1.getOutputStream();
+				in2 = cbb2.getInputStream();
+				out2 = cbb2.getOutputStream(); 
+				
 				try {
-					in.readFully(encodedBytes, bytesinPkt, filledPktCnt);
-				} catch (IOException e) {
+					/* Save to file? */
+					if (demuxOutputFile != null) {
+						out2 = new FileOutputStream(demuxOutputFile);
+					}
+					
+					/* Save to file? */
+					if (streamOutputFile != null) {
+						out1 = new FileOutputStream(streamOutputFile);
+					}
+					
+					/* Read from file? */
+					if (audioInputFile != null) {
+						in2 = new FileInputStream(audioInputFile);
+					}
+				} catch (FileNotFoundException e) {
 					// TODO Auto-generated catch block
-					Log.e(TAG, "M:Error reading packet");
-					PlayerStatus = MediaStatus.STATUS_ERROR;
-					continue;
+					e.printStackTrace();
+					break;
 				}
-
-				/* Decode the aac packet 
-				 * Result s[0] : num of decoded bytes of media
-				 * Result s[1] : num bytes remaining in the original packet. Must fill packet.
-				 * 
-				 * */ 
-				String s[] = avDecode(encodedBytes, rawDecodedBytes).split(",");
-				bytesinDecoded = Integer.parseInt(s[0]);
-				bytesinPkt = Integer.parseInt(s[1]);
-				Log.d(TAG,"M:Got " + bytesinDecoded + " from decoder, " + bytesinPkt + " remainder in pkt");
-
-				if ((bytesinDecoded < 0) || (bytesinPkt < 0)) {
-					PlayerStatus = MediaStatus.STATUS_ERROR;
-					continue;
+				
+				if (url != null) {
+					streamThread = new StreamThread(url, out1);
 				}
-				audioTrack.write(rawDecodedBytes, 0, (int)bytesinDecoded);
-				Log.d(TAG, "M:Wrote to AudioTrack");
-				publishProgress((int)bytesinDecoded);
+				demuxThread = new DemuxThread(in1, out2);
+				audioThread = new AudioThread(in2);
+				
+				streamThread.execute();
+				demuxThread.execute();
+				audioThread.execute();
+				
+				PlayerStatus = MediaStatus.STATUS_PLAYING; 
+			} else if (PlayerStatus == MediaStatus.STATUS_PLAYING) {
+				;
 			} else if (PlayerStatus == MediaStatus.STATUS_RESYNC) {
 				Log.i(TAG, "M:Status: Can't resync");
 				PlayerStatus = MediaStatus.STATUS_ERROR;
@@ -125,15 +170,53 @@ public class MediaThread extends AsyncTask<Void, Integer, Void> {
 				PlayerStatus = MediaStatus.STATUS_STOP;
 			} else if (PlayerStatus == MediaStatus.STATUS_STOP) {
 				Log.i(TAG, "M:Status: Requested Stop");
-				audioTrack.stop();
-				try { in.close(); } catch (IOException e) { }
-				publishProgress(MediaStatus.PROGRESS_STOPPED);
+				streamThread.stop();
+				demuxThread.stop();
+				audioThread.stop();
+				try { Thread.sleep(250); } catch(Exception e) { }
+				streamThread = null;
+				demuxThread = null;
+				audioThread = null;
 				PlayerStatus = MediaStatus.STATUS_STOPPED;
 			} else if (PlayerStatus == MediaStatus.STATUS_STOPPED) {
-				break;
+				;
 			}
+			
+			try {
+				Thread.sleep(100);
+				Thread.yield();
+			} catch(Exception ex) {
+			}		
+			
+			publishThreadProgress(PlayerStatus);
 		}
 		return null;
+	}
+	
+	/**
+	 * Used to retrieve worker thread data rates and publish rates to listeners
+	 * @param pStatus The status of this thread
+	 */
+	private void publishThreadProgress(int pStatus){
+		int s = 0;
+		int d = 0;
+		int a = 0;
+		
+		if (streamThread != null) {
+			s = streamThread.getAverageData();
+		}
+		if (demuxThread != null) {
+			d = demuxThread.getAverageData();
+		}
+		if (audioThread != null) {
+			a = audioThread.getAverageData();
+		}
+		
+		/* Publish the status and data rates of all threads */
+		publishProgress(pStatus,
+						s,
+						d,
+						a);
 	}
 	
 	/*
@@ -141,42 +224,7 @@ public class MediaThread extends AsyncTask<Void, Integer, Void> {
 	 */
     protected void onPostExecute(Long result) {
 		if (status != null) {
-			status.onProgressUpdate(MediaStatus.PROGRESS_STOPPED);
+			status.onProgressUpdate(MediaStatus.STATUS_STOPPED);
 		}
     }
-
-	
-	/*
-	 * A native method that is implemented by the 'lw-player' native library,
-	 * which is packaged with this application.
-	 */
-	public native String avInit();
-	public native String avDecode(byte[] encodedBytes, byte[] rawDecodedBytes);
-	public native int avOpen();
-	public native int avClose();
-
-	public native int avGetInBufSize();  
-	public native int avGetOutBufSize();
-
-	/*
-	 * This is another native method declaration that is *not* implemented by
-	 * 'hello-jni'. This is simply to show that you can declare as many native
-	 * methods in your Java code as you want, their implementation is searched
-	 * in the currently loaded native libraries only the first time you call
-	 * them.
-	 * 
-	 * Trying to call this function will result in a
-	 * java.lang.UnsatisfiedLinkError exception !
-	 */
-	public native String unimplementedStringFromJNI(); 
-
-	/*
-	 * this is used to load the 'hello-jni' library on application startup. The
-	 * library has already been unpacked into
-	 * /data/data/com.example.HelloJni/lib/libhello-jni.so at installation time
-	 * by the package manager.
-	 */
-	static {
-		System.loadLibrary("lw-player");                        
-	}
 }
