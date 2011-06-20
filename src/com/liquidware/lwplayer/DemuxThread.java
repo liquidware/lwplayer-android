@@ -69,6 +69,7 @@ public class DemuxThread extends AsyncTask<Void, Integer, Void> {
 				Number of segments & segment properties	UINT8	0 or 1 ( depends on flags )
 		 */
 		while(!ThreadInterrupted) {
+			Log.d(TAG,"M:Alive");
 			try {
 				
 				if (in.available() < 4000) {

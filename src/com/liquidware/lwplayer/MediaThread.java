@@ -36,11 +36,13 @@ public class MediaThread extends AsyncTask<Void, Integer, Void> {
 	
 	String url;
 	
+	int noStreamData;
 	
 	public MediaThread() {
 		demuxOutputFile = null;
 		streamOutputFile = null;
 		audioInputFile = null;
+		noStreamData = 0;
 	}
 	
 	public void addProgressListener(MediaStatus ms) {
@@ -49,6 +51,11 @@ public class MediaThread extends AsyncTask<Void, Integer, Void> {
 	
 	public void setUrl(String url) {
 		this.url = url;
+	}
+	
+	public InputStream getAsfInputStream() {
+		return in2;
+		
 	}
 	
 	/**
@@ -97,6 +104,7 @@ public class MediaThread extends AsyncTask<Void, Integer, Void> {
 	
 	public void stop() {
 		PlayerStatus = MediaStatus.STATUS_STOP;
+		//
 	}
 	
 	public int getPlayerStatus() {
@@ -114,9 +122,11 @@ public class MediaThread extends AsyncTask<Void, Integer, Void> {
 
 	@Override
 	protected Void doInBackground(Void... params) {
-
+		Log.d(TAG,"M:Thread started id=" + Thread.currentThread().getId());
+		
 		while(!ThreadInterrupted)
 		{
+			try {
 			if (PlayerStatus == MediaStatus.STATUS_PLAY) {
 				Log.i(TAG, "M:Status: Requested Play");
 				/* Initialize */
@@ -150,18 +160,27 @@ public class MediaThread extends AsyncTask<Void, Integer, Void> {
 				}
 				
 				if (url != null) {
+					Log.i(TAG, "M:Creating new stream thread");
 					streamThread = new StreamThread(url, out1);
 				}
+				Log.i(TAG, "M:Creating new demux thread");
 				demuxThread = new DemuxThread(in1, out2);
-				audioThread = new AudioThread(in2);
+				//audioThread = new AudioThread(in2);
 				
+				Log.i(TAG, "M:trying execute stream thread");
 				streamThread.execute();
 				demuxThread.execute();
-				audioThread.execute();
+				//audioThread.execute();
 				
 				PlayerStatus = MediaStatus.STATUS_PLAYING; 
 			} else if (PlayerStatus == MediaStatus.STATUS_PLAYING) {
-				;
+				if ((streamThread.getAverageData() <= 0) && (demuxThread.getAverageData() <= 0)) {
+					Log.d(TAG,"No data, thinking about killing media threads.");
+					noStreamData+=100;
+					if (noStreamData > 6000) {
+						PlayerStatus = MediaStatus.STATUS_STOP;
+					}
+				}
 			} else if (PlayerStatus == MediaStatus.STATUS_RESYNC) {
 				Log.i(TAG, "M:Status: Can't resync");
 				PlayerStatus = MediaStatus.STATUS_ERROR;
@@ -170,26 +189,43 @@ public class MediaThread extends AsyncTask<Void, Integer, Void> {
 				PlayerStatus = MediaStatus.STATUS_STOP;
 			} else if (PlayerStatus == MediaStatus.STATUS_STOP) {
 				Log.i(TAG, "M:Status: Requested Stop");
-				streamThread.stop();
-				demuxThread.stop();
-				audioThread.stop();
-				try { Thread.sleep(250); } catch(Exception e) { }
-				streamThread = null;
-				demuxThread = null;
+				
+				if (demuxThread != null) {
+					demuxThread.stop();
+					//demuxThread = null;
+				}
+				if (streamThread != null) {
+					streamThread.stop();
+					//streamThread = null;
+				}
+
+				//audioThread.stop();
+				try { Thread.sleep(5000); } catch(Exception e) { }
+				
 				audioThread = null;
 				PlayerStatus = MediaStatus.STATUS_STOPPED;
+				ThreadInterrupted = true;
 			} else if (PlayerStatus == MediaStatus.STATUS_STOPPED) {
 				;
 			}
 			
-			try {
-				Thread.sleep(100);
-				Thread.yield();
-			} catch(Exception ex) {
-			}		
+			/* Sleep */
+			try { 
+				Thread.sleep(100); Thread.yield(); 
+			} catch(Exception ex) { }		
 			
 			publishThreadProgress(PlayerStatus);
+			} catch (Exception e) {
+				e.printStackTrace();
+				Log.i(TAG, "M:Exception in media thread, stopping");
+				streamThread = null;
+				demuxThread = null;
+				audioThread = null;
+				PlayerStatus = MediaStatus.STATUS_STOPPED;
+			}
 		}
+		
+		Log.d(TAG, "Thread closing.");
 		return null;
 	}
 	
@@ -217,6 +253,7 @@ public class MediaThread extends AsyncTask<Void, Integer, Void> {
 						s,
 						d,
 						a);
+		
 	}
 	
 	/*
@@ -225,6 +262,7 @@ public class MediaThread extends AsyncTask<Void, Integer, Void> {
     protected void onPostExecute(Long result) {
 		if (status != null) {
 			status.onProgressUpdate(MediaStatus.STATUS_STOPPED);
+			status = null;
 		}
     }
 }

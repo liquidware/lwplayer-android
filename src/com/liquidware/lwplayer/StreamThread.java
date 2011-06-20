@@ -10,7 +10,7 @@ import android.os.AsyncTask;
 import android.util.Log;
 
 public class StreamThread extends AsyncTask<Void, Integer, Void> {
-	private static final String TAG = "StreamThread";
+	private static final String TAG = "Lwplay.StreamThread";
 	private String urlStr;
 	private OutputStream out;
 	private boolean ThreadInterrupted;
@@ -40,6 +40,7 @@ public class StreamThread extends AsyncTask<Void, Integer, Void> {
 	protected Void doInBackground(Void... params) {
 		Log.d(TAG,"S:Thread started id=" + Thread.currentThread().getId());
 		connect();
+		Log.e(TAG, "Thread closing.");
 		return null;
 	}
 
@@ -53,8 +54,8 @@ public class StreamThread extends AsyncTask<Void, Integer, Void> {
 			// do some setup
 			conn.setDoInput(true); 
 			conn.setDoOutput(true); 
-			conn.setReadTimeout(10000);
-			conn.setConnectTimeout(15000);
+			conn.setReadTimeout(2000);
+			conn.setConnectTimeout(2000);
 			conn.setRequestMethod("GET");
 			conn.setUseCaches(false);
 			conn.addRequestProperty("Accept", "*/*");
@@ -63,16 +64,16 @@ public class StreamThread extends AsyncTask<Void, Integer, Void> {
 			conn.addRequestProperty("Pragma", "stream-offset=0:0,request-context=1,max-duration=0");
 			conn.addRequestProperty("Pragma", "xClientGUID={c77e7400-738a-11d2-9add-0020af0a3278}");
 			conn.addRequestProperty("Connection", "Close");
-
+			
 			conn.connect();
-
+			
 			//conn.getOutputStream().flush();
 			// now fetch the results
 			getResponse(conn);
 
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
-			e.printStackTrace();
+			Log.e(TAG, "Error: Timeout connecting to server.");
 		}
 	}
 
@@ -115,15 +116,16 @@ public class StreamThread extends AsyncTask<Void, Integer, Void> {
 		int chunk_length_confirm=0;
 		boolean asf_header_parsed = false;
 		int asf_packet_len = 0;
-
+		
 		while (!ThreadInterrupted) {
+			Log.d(TAG,"S:Alive");
 			try {
-				
-				in.readFully(header, 0,  1);
-				if ( header[0] == 0x24) {
-					in.readFully(header, 0,  1);
+
+				in.read(header, 0, 1);
+				if (header[0] == 0x24) {
+					in.read(header, 0,  1);
 					if ( (header[0] == 0x44) || (header[0] == 0x48)) {
-						in.readFully(header, 0,  10);
+						in.read(header, 0,  10);
 						//guess chunk_size
 						chunk_type = 0;
 
@@ -153,17 +155,26 @@ public class StreamThread extends AsyncTask<Void, Integer, Void> {
 						chunk_length-=8;
 					} else {
 						Log.e(TAG, "S:Error, discarding packet");
+						publishProgress(0);
 						continue;
 					}
 				} else {
 					Log.e(TAG, "S:Error, discarding packet");
+					publishProgress(0);
 					continue;
 				}
-
 				
 				byte[] asf_data = new byte[chunk_length];
 				Log.d(TAG,"S:Reading: " + chunk_length);
-				in.readFully(asf_data, 0, chunk_length);
+				if (in.available() < chunk_length) {
+					Thread.sleep(100);
+					Thread.yield();
+				}
+				if (in.read(asf_data, 0, chunk_length) < chunk_length ) {
+					publishProgress(0);
+					continue;
+				}
+				
 				publishProgress(chunk_length);
 
 				if (!asf_header_parsed) {
